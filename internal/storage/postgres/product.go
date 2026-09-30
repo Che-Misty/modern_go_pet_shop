@@ -43,6 +43,22 @@ func (s *Storage) GetAllProducts(ctx context.Context) ([]models.Product, error) 
 	return products, nil
 }
 
+// GetProductByID - получает продукт по ID
+func (s *Storage) GetProductByID(ctx context.Context, id int) (*models.Product, error) {
+	const fn = "storage.postgres.product.GetProductByID"
+
+	var p models.Product
+	err := s.db.QueryRow(ctx,
+		`SELECT id, name, price, stock FROM products WHERE id = $1`,
+		id).Scan(&p.ID, &p.Name, &p.Price, &p.Stock)
+
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return &p, nil
+}
+
 // CreateProduct - создает продукт и возвращает его ID
 func (s *Storage) CreateProduct(ctx context.Context, p models.Product) (int, error) {
 	const fn = "storage.postgres.product.CreateProduct"
