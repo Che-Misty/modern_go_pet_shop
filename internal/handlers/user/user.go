@@ -12,8 +12,8 @@ import (
 
 type User interface {
 	CreateUser(ctx context.Context, user models.User) (int, error)
-	GetUserByEmail(ctx context.Context, email string) (*User, error)
-	GetAllUsers(ctx context.Context) ([]User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	GetAllUsers(ctx context.Context) ([]models.User, error)
 }
 
 type Handler struct {
