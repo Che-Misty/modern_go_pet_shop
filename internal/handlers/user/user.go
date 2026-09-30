@@ -94,3 +94,78 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	})
 
 }
+
+func (h *Handler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
+	const fn = "handlers.user.GetUserByEmail"
+	log := h.log.With(
+		slog.String("fn", fn),
+		slog.String("request_id", middleware.GetReqID(r.Context())),
+	)
+
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		log.Error("email query parameter is required")
+		w.WriteHeader(http.StatusBadRequest)
+		render.JSON(w, r, map[string]string{
+			"error":   "Bad request",
+			"message": "Email is required",
+		})
+		return
+	}
+
+	user, err := h.storage.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		log.Error("failed to retrieve user", slog.Any("error", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		render.JSON(w, r, map[string]string{
+			"error":   "Internal server error",
+			"message": "Failed to retrieve user",
+		})
+		return
+	}
+
+	if user == nil {
+		log.Info("User not found", slog.String("email", email))
+		w.WriteHeader(http.StatusNotFound)
+		render.JSON(w, r, map[string]string{
+			"error":   "Not found",
+			"message": "User not found",
+		})
+		return
+	}
+
+	log.Info("Retrieved user successfully",
+		slog.String("url", r.URL.String()),
+		slog.Int("id", user.ID),
+	)
+
+	render.JSON(w, r, user)
+}
+
+func (h *Handler) GetAllUsers(w http.ResponseWriter, r *http.Request) {
+	const fn = "handlers.user.GetAllUsers"
+	log := h.log.With(
+		slog.String("fn", fn),
+		slog.String("request_id", middleware.GetReqID(r.Context())),
+	)
+
+	log.Info("Retrieving all users", slog.String("url", r.URL.String()))
+
+	users, err := h.storage.GetAllUsers(r.Context())
+	if err != nil {
+		log.Error("failed to retrieve users", slog.Any("error", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		render.JSON(w, r, map[string]string{
+			"error":   "Internal server error",
+			"message": "Failed to retrieve users",
+		})
+		return
+	}
+
+	log.Info("Retrieved all users successfully",
+		slog.String("url", r.URL.String()),
+		slog.Int("count", len(users)),
+	)
+
+	render.JSON(w, r, users)
+}
