@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"go-pet-shop/internal/models"
-)
+	"go-pet-shop/internal/storage"
 
-var (
-	ErrUserNotFound = errors.New("user not found")
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Storage) CreateUser(ctx context.Context, user models.User) (int, error) {
@@ -36,6 +35,9 @@ func (s *Storage) GetUserByEmail(ctx context.Context, email string) (*models.Use
 		email).Scan(&u.ID, &u.Name, &u.Email)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%s: %w: email=%s", fn, storage.ErrNotFound, email)
+		}
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
