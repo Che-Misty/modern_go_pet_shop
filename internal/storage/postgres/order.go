@@ -1,11 +1,13 @@
 package postgres
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"go-pet-shop/internal/models"
 	"go-pet-shop/internal/storage"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -87,16 +89,15 @@ func (s *Storage) GetOrdersByUserEmail(ctx context.Context, email string) ([]mod
 	return orders, nil
 }
 
-func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]models.OrderItemDetail, error) {
+func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]models.OrderItem, error) {
 	const fn = "storage.postgres.order.GetOrderItemsByOrderID"
 
-	var orderItems []models.OrderItemDetail
+	var orderItems []models.OrderItem
 	rows, err := s.db.Query(ctx,
-		`SELECT oi.id, oi.order_id, oi.product_id, p.name, p.price, oi.quantity
-		FROM order_items oi
-		JOIN products p ON p.id = oi.product_id
-		WHERE oi.order_id = $1
-		ORDER BY oi.id`,
+		`SELECT id, order_id, product_id, quantity
+		FROM order_items
+		WHERE order_id = $1
+		ORDER BY id`,
 		orderID)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", fn, err)
@@ -104,8 +105,8 @@ func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]mo
 	defer rows.Close()
 
 	for rows.Next() {
-		var orderItem models.OrderItemDetail
-		if err := rows.Scan(&orderItem.ID, &orderItem.OrderID, &orderItem.ProductID, &orderItem.ProductName, &orderItem.Price, &orderItem.Quantity); err != nil {
+		var orderItem models.OrderItem
+		if err := rows.Scan(&orderItem.ID, &orderItem.OrderID, &orderItem.ProductID, &orderItem.Quantity); err != nil {
 			return nil, fmt.Errorf("%s: %w", fn, err)
 		}
 		orderItems = append(orderItems, orderItem)
@@ -116,4 +117,76 @@ func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]mo
 	}
 
 	return orderItems, nil
+}
+
+func (s *Storage) PlaceOrder(ctx context.Context, userEmail string, items []models.OrderItem) (orderID int, err error) {
+	const fn = "storage.postgres.order.PlaceOrder"
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
+	}
+	defer tx.Rollback(ctx)
+
+	sortedItems := slices.Clone(items)
+	slices.SortFunc(sortedItems, func(a, b models.OrderItem) int {
+		return cmp.Compare(a.ProductID, b.ProductID)
+	})
+
+	var totalPrice float64
+	for _, item := range sortedItems {
+		var price float64
+		err = tx.QueryRow(ctx,
+			`UPDATE products SET stock = stock - $1
+			WHERE id = $2 AND stock >= $1
+			RETURNING price`, item.Quantity, item.ProductID).Scan(&price)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				var exists bool
+				err = tx.QueryRow(ctx,
+					`SELECT EXISTS(SELECT 1 FROM products WHERE id = $1)`,
+					item.ProductID).Scan(&exists)
+				if err != nil {
+					return 0, fmt.Errorf("%s: %w", fn, err)
+				}
+				if !exists {
+					return 0, fmt.Errorf("%s: %w: product_id=%d", fn, storage.ErrNotFound, item.ProductID)
+				}
+				return 0, fmt.Errorf("%s: %w: product_id=%d", fn, storage.ErrInsufficientStock, item.ProductID)
+			}
+			return 0, fmt.Errorf("%s: %w", fn, err)
+		}
+		totalPrice += price * float64(item.Quantity)
+	}
+
+	err = tx.QueryRow(ctx,
+		`INSERT INTO orders (user_email, total_price)
+		VALUES ($1, $2)
+		RETURNING id`, userEmail, totalPrice).Scan(&orderID)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	for _, item := range sortedItems {
+		_, err = tx.Exec(ctx,
+			`INSERT INTO order_items (order_id, product_id, quantity)
+			VALUES ($1, $2, $3)`,
+			orderID, item.ProductID, item.Quantity)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", fn, err)
+		}
+	}
+
+	_, err = tx.Exec(ctx,
+		`INSERT INTO transactions (order_id, amount, status)
+		VALUES ($1, $2, 'pending')`, orderID, totalPrice)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
+	}
+	return orderID, nil
 }

@@ -2,7 +2,9 @@ package order
 
 import (
 	"context"
+	"errors"
 	"go-pet-shop/internal/models"
+	"go-pet-shop/internal/storage"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -18,6 +20,7 @@ type Orders interface {
 	GetOrderByID(ctx context.Context, id int) (*models.Order, error)
 	GetOrdersByUserEmail(ctx context.Context, email string) ([]models.Order, error)
 	GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]models.OrderItem, error)
+	PlaceOrder(ctx context.Context, userEmail string, items []models.OrderItem) (int, error)
 }
 
 type Handler struct {
@@ -201,6 +204,16 @@ func (h *Handler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	order, err := h.storage.GetOrderByID(r.Context(), id)
 	if err != nil {
 		log.Error("failed to get order", slog.Any("error", err))
+
+		if errors.Is(err, storage.ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			render.JSON(w, r, map[string]string{
+				"error":   "Not found",
+				"message": "Order not found",
+			})
+			return
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		render.JSON(w, r, map[string]string{
 			"error":   "Internal server error",
@@ -226,4 +239,99 @@ func (h *Handler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	render.JSON(w, r, response)
+}
+
+type CheckoutRequest struct {
+	UserEmail string             `json:"user_email"`
+	Items     []models.OrderItem `json:"items"`
+}
+
+type CheckoutResponse struct {
+	OrderID int    `json:"order_id"`
+	Status  string `json:"status"`
+}
+
+func (h *Handler) CheckoutOrder(w http.ResponseWriter, r *http.Request) {
+	const fn = "handlers.order.CheckoutOrder"
+	log := h.log.With(
+		slog.String("fn", fn),
+		slog.String("request_id", middleware.GetReqID(r.Context())),
+	)
+
+	var checkoutReq CheckoutRequest
+	if err := render.DecodeJSON(r.Body, &checkoutReq); err != nil {
+		log.Error("failed to decode request body", slog.Any("error", err))
+		w.WriteHeader(http.StatusBadRequest)
+		render.JSON(w, r, map[string]string{
+			"error":   "Bad request",
+			"message": "Invalid JSON payload",
+		})
+		return
+	}
+
+	if checkoutReq.UserEmail == "" {
+		log.Error("user email is empty")
+		w.WriteHeader(http.StatusBadRequest)
+		render.JSON(w, r, map[string]string{
+			"error":   "Bad request",
+			"message": "User email is required",
+		})
+		return
+	}
+
+	if len(checkoutReq.Items) == 0 {
+		log.Error("no items in the order")
+		w.WriteHeader(http.StatusBadRequest)
+		render.JSON(w, r, map[string]string{
+			"error":   "Bad request",
+			"message": "At least one item is required in the order",
+		})
+		return
+	}
+
+	for _, item := range checkoutReq.Items {
+		if item.ProductID <= 0 || item.Quantity <= 0 {
+			log.Error("invalid product ID or quantity", slog.Int("product_id", item.ProductID), slog.Int("quantity", item.Quantity))
+			w.WriteHeader(http.StatusBadRequest)
+			render.JSON(w, r, map[string]string{
+				"error":   "Bad request",
+				"message": "Invalid product ID or quantity",
+			})
+			return
+		}
+	}
+
+	orderID, err := h.storage.PlaceOrder(r.Context(), checkoutReq.UserEmail, checkoutReq.Items)
+	if err != nil {
+		log.Error("failed to place order", slog.Any("error", err))
+
+		switch {
+		case errors.Is(err, storage.ErrInsufficientStock):
+			w.WriteHeader(http.StatusConflict)
+			render.JSON(w, r, map[string]string{
+				"error":   "Conflict",
+				"message": "Insufficient stock for one or more items",
+			})
+		case errors.Is(err, storage.ErrNotFound):
+			w.WriteHeader(http.StatusNotFound)
+			render.JSON(w, r, map[string]string{
+				"error":   "Not Found",
+				"message": "One or more products not found",
+			})
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			render.JSON(w, r, map[string]string{
+				"error":   "Internal server error",
+				"message": "Failed to place order",
+			})
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	render.JSON(w, r, CheckoutResponse{
+		OrderID: orderID,
+		Status:  "Order placed successfully",
+	})
+
 }
