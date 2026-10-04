@@ -78,6 +78,28 @@ func (h *Handler) AddOrderItem(w http.ResponseWriter, r *http.Request) {
 		slog.String("request_id", middleware.GetReqID(r.Context())),
 	)
 
+	orderID := chi.URLParam(r, "id")
+	if orderID == "" {
+		log.Error("missing order ID parameter")
+		w.WriteHeader(http.StatusBadRequest)
+		render.JSON(w, r, map[string]string{
+			"error":   "Bad request",
+			"message": "Missing order ID parameter",
+		})
+		return
+	}
+
+	id, err := strconv.Atoi(orderID)
+	if err != nil {
+		log.Error("invalid order ID parameter", slog.Any("error", err))
+		w.WriteHeader(http.StatusBadRequest)
+		render.JSON(w, r, map[string]string{
+			"error":   "Bad request",
+			"message": "Invalid order ID parameter",
+		})
+		return
+	}
+
 	log.Info("Adding order item", slog.String("url", r.URL.String()))
 
 	var orderItem models.OrderItem
@@ -91,7 +113,9 @@ func (h *Handler) AddOrderItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.storage.AddOrderItem(r.Context(), orderItem)
+	orderItem.OrderID = id
+
+	err = h.storage.AddOrderItem(r.Context(), orderItem)
 	if err != nil {
 		log.Error("failed to add order item", slog.Any("error", err))
 		w.WriteHeader(http.StatusInternalServerError)
