@@ -70,7 +70,7 @@ func main() {
 	router.Get("/orders/{id}", orderHandler.GetOrderByID)
 	router.Get("/users/orders", orderHandler.GetOrdersByUserEmail)
 	router.Post("/orders/{id}/items", orderHandler.AddOrderItem)
-	router.Post("/checkout", orderHandler.PlaceOrder)
+	router.Post("/checkout", orderHandler.CheckoutOrder)
 
 	// Settings and started server
 	srv := &http.Server{

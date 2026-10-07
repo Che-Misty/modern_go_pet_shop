@@ -190,3 +190,53 @@ func (s *Storage) PlaceOrder(ctx context.Context, userEmail string, items []mode
 	}
 	return orderID, nil
 }
+
+func (s *Storage) GetUserOrderHistory(ctx context.Context, userEmail string) ([]models.OrderDetail, error) {
+	const fn = "storage.postgres.order.GetUserOrderHistory"
+
+	rows, err := s.db.Query(ctx,
+		`SELECT o.id, o.user_email, o.total_price, o.created_at, COALESCE(t.status, '') AS transaction_status,
+		oi.id, oi.order_id, oi.product_id, oi.quantity
+		FROM orders o
+		JOIN order_items oi ON o.id = oi.order_id
+		LEFT JOIN transactions t ON o.id = t.order_id
+		WHERE o.user_email = $1
+		ORDER BY o.created_at DESC, o.id DESC, oi.id`, userEmail)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+	defer rows.Close()
+
+	byID := make(map[int]*models.OrderDetail)
+	result := make([]*models.OrderDetail, 0)
+
+	for rows.Next() {
+		var o models.Order
+		var status string
+		var item models.OrderItem
+		if err := rows.Scan(&o.ID, &o.UserEmail, &o.TotalPrice, &o.CreatedAt, &status, &item.ID, &item.OrderID, &item.ProductID, &item.Quantity); err != nil {
+			return nil, fmt.Errorf("%s: %w", fn, err)
+		}
+		od, ok := byID[o.ID]
+		if !ok {
+			od = &models.OrderDetail{
+				Order:             o,
+				Items:             []models.OrderItem{},
+				TransactionStatus: status,
+			}
+			byID[o.ID] = od
+			result = append(result, od)
+		}
+		od.Items = append(od.Items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	orderDetails := make([]models.OrderDetail, 0, len(result))
+	for _, od := range result {
+		orderDetails = append(orderDetails, *od)
+	}
+	return orderDetails, nil
+}
