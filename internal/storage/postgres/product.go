@@ -111,3 +111,35 @@ func (s *Storage) UpdateProduct(ctx context.Context, p models.Product) error {
 
 	return nil
 }
+
+func (s *Storage) GetPopularProducts(ctx context.Context) ([]models.PopularProduct, error) {
+	const fn = "storage.postgres.product.GetPopularProducts"
+
+	rows, err := s.db.Query(ctx,
+		`SELECT p.id, p.name, SUM(oi.quantity) AS total_sold
+		FROM order_items oi
+		JOIN products p ON p.id = oi.product_id
+		GROUP BY p.id, p.name
+		ORDER BY total_sold DESC
+		LIMIT 5`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+	defer rows.Close()
+
+	popularProducts := make([]models.PopularProduct, 0)
+
+	for rows.Next() {
+		var product models.PopularProduct
+		if err := rows.Scan(&product.ProductID, &product.Name, &product.TotalSold); err != nil {
+			return nil, fmt.Errorf("%s: %w", fn, err)
+		}
+		popularProducts = append(popularProducts, product)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return popularProducts, nil
+}

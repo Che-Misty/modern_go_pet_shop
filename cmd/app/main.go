@@ -59,6 +59,7 @@ func main() {
 	router.Post("/products", productHandler.CreateProduct)
 	router.Delete("/products/{id}", productHandler.DeleteProduct)
 	router.Put("/products/{id}", productHandler.UpdateProduct)
+	router.Get("/products/popular", productHandler.GetPopularProducts)
 
 	userHandler := user.New(log, storage)
 	router.Post("/users", userHandler.CreateUser)
@@ -71,6 +72,7 @@ func main() {
 	router.Get("/users/orders", orderHandler.GetOrdersByUserEmail)
 	router.Post("/orders/{id}/items", orderHandler.AddOrderItem)
 	router.Post("/checkout", orderHandler.CheckoutOrder)
+	router.Get("/users/history", orderHandler.GetUserOrderHistory)
 
 	// Settings and started server
 	srv := &http.Server{
