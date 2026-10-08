@@ -87,14 +87,13 @@ func (s *Storage) GetOrdersByUserEmail(ctx context.Context, email string) ([]mod
 	return orders, nil
 }
 
-func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]models.OrderItemDetail, error) {
+func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]models.OrderItem, error) {
 	const fn = "storage.postgres.order.GetOrderItemsByOrderID"
 
-	var orderItems []models.OrderItemDetail
+	var orderItems []models.OrderItem
 	rows, err := s.db.Query(ctx,
-		`SELECT oi.id, oi.order_id, oi.product_id, p.name, p.price, oi.quantity
+		`SELECT oi.id, oi.order_id, oi.product_id, oi.quantity
 		FROM order_items oi
-		JOIN products p ON p.id = oi.product_id
 		WHERE oi.order_id = $1
 		ORDER BY oi.id`,
 		orderID)
@@ -104,8 +103,8 @@ func (s *Storage) GetOrderItemsByOrderID(ctx context.Context, orderID int) ([]mo
 	defer rows.Close()
 
 	for rows.Next() {
-		var orderItem models.OrderItemDetail
-		if err := rows.Scan(&orderItem.ID, &orderItem.OrderID, &orderItem.ProductID, &orderItem.ProductName, &orderItem.Price, &orderItem.Quantity); err != nil {
+		var orderItem models.OrderItem
+		if err := rows.Scan(&orderItem.ID, &orderItem.OrderID, &orderItem.ProductID, &orderItem.Quantity); err != nil {
 			return nil, fmt.Errorf("%s: %w", fn, err)
 		}
 		orderItems = append(orderItems, orderItem)
