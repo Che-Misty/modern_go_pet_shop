@@ -240,34 +240,3 @@ func (s *Storage) GetUserOrderHistory(ctx context.Context, userEmail string) ([]
 	}
 	return orderDetails, nil
 }
-
-func (s *Storage) GetPopularProducts(ctx context.Context) ([]models.PopularProduct, error) {
-	const fn = "storage.postgres.order.GetPopularProducts"
-
-	rows, err := s.db.Query(ctx,
-		`SELECT p.id, p.name, SUM(oi.quantity) AS total_quantity
-		FROM products p
-		JOIN order_items oi ON p.id = oi.product_id
-		GROUP BY p.id, p.name
-		ORDER BY total_quantity DESC`)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", fn, err)
-	}
-	defer rows.Close()
-
-	popularProducts := make(models.PopularProduct, 0)
-
-	for rows.Next() {
-		var product models.PopularProduct
-		if err := rows.Scan(&product.ID, &product.Name, &product.TotalQuantity); err != nil {
-			return nil, fmt.Errorf("%s: %w", fn, err)
-		}
-		popularProducts = append(popularProducts, product)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", fn, err)
-	}
-
-	return popularProducts, nil
-}
