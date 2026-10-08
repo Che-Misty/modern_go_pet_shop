@@ -29,15 +29,6 @@ type OrderItem struct {
 	Quantity  int `json:"quantity"`
 }
 
-type OrderItemDetail struct {
-	ID          int
-	OrderID     int
-	ProductID   int
-	ProductName string
-	Price       float64
-	Quantity    int
-}
-
 type Transactions struct {
 	ID        int       `json:"id"`
 	OrderID   int       `json:"order_id"`
