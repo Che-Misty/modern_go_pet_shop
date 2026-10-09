@@ -2,8 +2,10 @@ package product
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-pet-shop/internal/models"
+	"go-pet-shop/internal/storage"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -94,21 +96,21 @@ func (h *Handler) GetProductByID(w http.ResponseWriter, r *http.Request) {
 
 	product, err := h.storage.GetProductByID(r.Context(), id)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			log.Warn("product not found", slog.Int("id", id))
+			w.WriteHeader(http.StatusNotFound)
+			render.JSON(w, r, map[string]string{
+				"error":   "Not found",
+				"message": fmt.Sprintf("Product with ID %d does not exist", id),
+			})
+			return
+		}
+
 		log.Error("failed to get product by ID", slog.Any("error", err), slog.Int("id", id))
 		w.WriteHeader(http.StatusInternalServerError)
 		render.JSON(w, r, map[string]string{
 			"error":   "Internal server error",
 			"message": "Failed to retrieve product",
-		})
-		return
-	}
-
-	if product == nil {
-		log.Warn("product not found", slog.Int("id", id))
-		w.WriteHeader(http.StatusNotFound)
-		render.JSON(w, r, map[string]string{
-			"error":   "Not found",
-			"message": fmt.Sprintf("Product with ID %d does not exist", id),
 		})
 		return
 	}
@@ -193,6 +195,7 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 
 	// Возвращаем созданный продукт с его ID
 	product.ID = productID
+	w.WriteHeader(http.StatusCreated)
 	render.JSON(w, r, map[string]interface{}{
 		"status":  "Product created successfully",
 		"id":      productID,

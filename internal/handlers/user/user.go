@@ -2,7 +2,9 @@ package user
 
 import (
 	"context"
+	"errors"
 	"go-pet-shop/internal/models"
+	"go-pet-shop/internal/storage"
 	"log/slog"
 	"net/http"
 
@@ -13,7 +15,7 @@ import (
 
 type User interface {
 	CreateUser(ctx context.Context, user models.User) (int, error)
-	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (models.User, error)
 	GetAllUsers(ctx context.Context) ([]models.User, error)
 }
 
@@ -88,6 +90,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	)
 
 	user.ID = userID
+	w.WriteHeader(http.StatusCreated)
 	render.JSON(w, r, map[string]interface{}{
 		"status": "User created successfully",
 		"id":     userID,
@@ -116,21 +119,21 @@ func (h *Handler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.storage.GetUserByEmail(r.Context(), email)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			log.Info("User not found", slog.String("email", email))
+			w.WriteHeader(http.StatusNotFound)
+			render.JSON(w, r, map[string]string{
+				"error":   "Not found",
+				"message": "User not found",
+			})
+			return
+		}
+
 		log.Error("failed to retrieve user", slog.Any("error", err))
 		w.WriteHeader(http.StatusInternalServerError)
 		render.JSON(w, r, map[string]string{
 			"error":   "Internal server error",
 			"message": "Failed to retrieve user",
-		})
-		return
-	}
-
-	if user == nil {
-		log.Info("User not found", slog.String("email", email))
-		w.WriteHeader(http.StatusNotFound)
-		render.JSON(w, r, map[string]string{
-			"error":   "Not found",
-			"message": "User not found",
 		})
 		return
 	}
