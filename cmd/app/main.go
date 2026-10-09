@@ -71,7 +71,7 @@ func main() {
 	router.Get("/orders/{id}", orderHandler.GetOrderByID)
 	router.Get("/users/orders", orderHandler.GetOrdersByUserEmail)
 	router.Post("/orders/{id}/items", orderHandler.AddOrderItem)
-	router.Post("/checkout", orderHandler.CheckoutOrder)
+	router.Post("/checkout", orderHandler.PlaceOrder)
 	router.Get("/users/history", orderHandler.GetUserOrderHistory)
 
 	// Settings and started server

@@ -252,8 +252,8 @@ type CheckoutResponse struct {
 	Status  string `json:"status"`
 }
 
-func (h *Handler) CheckoutOrder(w http.ResponseWriter, r *http.Request) {
-	const fn = "handlers.order.CheckoutOrder"
+func (h *Handler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
+	const fn = "handlers.order.PlaceOrder"
 	log := h.log.With(
 		slog.String("fn", fn),
 		slog.String("request_id", middleware.GetReqID(r.Context())),
