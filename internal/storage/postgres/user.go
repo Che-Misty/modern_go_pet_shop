@@ -26,7 +26,7 @@ func (s *Storage) CreateUser(ctx context.Context, user models.User) (int, error)
 }
 
 // GetUserByEmail - получает пользователя по email
-func (s *Storage) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+func (s *Storage) GetUserByEmail(ctx context.Context, email string) (models.User, error) {
 	const fn = "storage.postgres.user.GetUserByEmail"
 
 	var u models.User
@@ -36,12 +36,12 @@ func (s *Storage) GetUserByEmail(ctx context.Context, email string) (*models.Use
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%s: %w: email=%s", fn, storage.ErrNotFound, email)
+			return models.User{}, fmt.Errorf("%s: %w: email=%s", fn, storage.ErrNotFound, email)
 		}
-		return nil, fmt.Errorf("%s: %w", fn, err)
+		return models.User{}, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return &u, nil
+	return u, nil
 }
 
 func (s *Storage) GetAllUsers(ctx context.Context) ([]models.User, error) {

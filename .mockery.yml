@@ -25,3 +25,9 @@ packages:
   go-pet-shop/internal/handlers/product:
     config:
       all: true
+  go-pet-shop/internal/handlers/order:
+    config:
+      all: true
+  go-pet-shop/internal/handlers/user:
+    config:
+      all: true

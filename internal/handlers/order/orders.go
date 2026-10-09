@@ -2,7 +2,9 @@ package order
 
 import (
 	"context"
+	"errors"
 	"go-pet-shop/internal/models"
+	"go-pet-shop/internal/storage"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -201,6 +203,16 @@ func (h *Handler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	order, err := h.storage.GetOrderByID(r.Context(), id)
 	if err != nil {
 		log.Error("failed to get order", slog.Any("error", err))
+
+		if errors.Is(err, storage.ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			render.JSON(w, r, map[string]string{
+				"error":   "Not found",
+				"message": "Order not found",
+			})
+			return
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		render.JSON(w, r, map[string]string{
 			"error":   "Internal server error",
