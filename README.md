@@ -1,174 +1,120 @@
-# 🐾 Go Pet Shop
+# go-pet-shop
 
-**Go Pet Shop** — учебный проект интернет-магазина товаров для питомцев на Go с PostgreSQL.
-Практика посвящена написанию unit-тестов для HTTP-хендлеров с использованием ручного мока (v1) и автогенерируемого мока через mockery (v2).
+Учебный backend интернет-магазина на Go: товары, пользователи, заказы,
+оформление заказа в транзакции и аналитика.
 
----
+**Стек:** Go, chi (роутер), pgx/pgxpool (драйвер), PostgreSQL 16,
+Docker Compose, mockery + testify (тесты).
 
-## ⚙️ Технологии
+## Запуск
 
-- **Go 1.24+** — основной язык разработки (нужен для `tool`-зависимостей в `go.mod`, используемых веткой v2)
-- **PostgreSQL** — база данных
-- **chi** — HTTP-роутер
-- **golang-migrate** — управление миграциями БД
-- **testify** — assertions и моки
-- **mockery v3** — генерация моков из интерфейсов
-- **golangci-lint** — статический анализ кода
-- **Taskfile** — автоматизация команд
+Нужны Docker и Docker Compose.
 
----
-
-## 🧩 Версии проекта
-
-Проект разделён на две ветки, каждая демонстрирует свой подход к мокированию зависимостей в тестах.
-
-### `v1` — ручной мок
-
-Мок интерфейса `Products` (`internal/handlers/product/product_mock.go`) написан вручную.
-Поведение методов задаётся через поля-функции:
-
-```go
-mock := &ProductsMock{
-    GetAllProductsFunc: func(ctx context.Context) ([]models.Product, error) {
-        return nil, errors.New("db error")
-    },
-}
-```
-
-**Плюс:** просто и наглядно для понимания, как работает подмена зависимостей через интерфейсы.
-**Минус:** мок нужно поддерживать руками при любом изменении интерфейса `Products`.
-
-### `v2` — mockery + testify
-
-Мок генерируется автоматически через [mockery v3](https://github.com/vektra/mockery) на основе интерфейса `Products`, конфиг — `.mockery.yml`.
-
-Над интерфейсом добавлена директива генерации (`internal/handlers/product/products.go`):
-
-```go
-//go:generate go run github.com/vektra/mockery/v3
-
-type Products interface {
-    GetAllProducts(ctx context.Context) ([]models.Product, error)
-    CreateProduct(ctx context.Context, product models.Product) (int, error)
-    DeleteProduct(ctx context.Context, id int) error
-    UpdateProduct(ctx context.Context, product models.Product) error
-}
-```
-
-Сгенерировать (или перегенерировать после изменения интерфейса) мок:
+1. Скопируйте переменные окружения и при желании поменяйте пароль:
 
 ```bash
-go generate ./...
+   cp .env.example .env
 ```
 
-Мок основан на `testify/mock` и настраивается через типобезопасный `.EXPECT()`:
+2. Поднимите проект одной командой:
 
-```go
-mock := NewProductsMock(t)
-mock.EXPECT().GetAllProducts(mock2.Anything).Return(nil, errors.New("db error"))
+```bash
+   docker compose up --build
 ```
 
-Также `NewProductsMock(t)` регистрирует `t.Cleanup`, который в конце теста вызывает `AssertExpectations` — если хендлер не сделал ожидаемый вызов к storage, тест упадёт сам, без ручных проверок.
+   Compose запускает PostgreSQL, дожидается его готовности, применяет
+   миграции и стартует приложение на `http://localhost:8080`.
 
-**Плюс:** мок регенерируется автоматически при изменении интерфейса одной командой, без ручной установки бинарника — `mockery/v3` подключён как [tool-зависимость](https://go.dev/doc/modules/managing-dependencies#tools) в `go.mod` (`go get -tool github.com/vektra/mockery/v3`), поэтому при клонировании репозитория `go generate ./...` скачает и запустит нужную версию mockery самостоятельно.
+3. Проверка: `GET http://localhost:8080/health`.
 
-**Минус:** требует понимания API testify/mock (`.EXPECT()`, `.On()`, `.Return()`), и первый запуск `go generate` требует интернет-соединения для скачивания инструмента.
+Остановить проект и удалить данные (база снова стартует с нуля):
 
-### Ключевое отличие v1 vs v2
+```bash
+docker compose down -v
+```
 
-| | v1 (ручной мок) | v2 (mockery) |
-|---|---|---|
-| Кто пишет мок | вы вручную | генерируется командой `go generate ./...` |
-| Настройка поведения | через поля-функции (`XxxFunc`) | через `.EXPECT()` / `.On()` |
-| Проверка «метод точно вызвался» | нет автоматической | есть (`AssertExpectations`) |
-| Поддержка при росте интерфейса | руками | перегенерировать и всё |
+### Миграции вручную
 
----
+```bash
+go run ./cmd/migrator --migrations-path ./migrations
+```
 
-## 🧪 Тестирование
+### Запуск приложения без Docker
 
-Тесты покрывают HTTP-хендлеры `product` для сценариев:
+Поднимите только базу и запустите приложение локально
+(в `.env` хост базы `localhost`):
 
-| Хендлер | Success (200) | BadRequest (400) | Fail (500) |
-|---|---|---|---|
-| GetAllProducts | ✅ | — | ✅ |
-| CreateProduct | ✅ | ✅ | ✅ |
-| UpdateProduct | ✅ | ✅ | ✅ |
-| DeleteProduct | ✅ | ✅ | ✅ |
+```bash
+docker compose up postgres
+go run ./cmd/app
+```
 
-Запуск всех тестов:
+## Версии
+
+Каждая версия живёт в своей ветке и включает всё из предыдущей.
+
+### v1: пользователи и товары
+
+Созданы интерфейсы хранилища для пользователей (`User`) и товаров
+(`Products`) и их реализация на PostgreSQL.
+
+- **Пользователи:** создание, поиск по email, список всех.
+- **Товары:** создание, обновление, удаление, поиск по ID, список всех.
+
+Хендлеры: `CreateUser`, `GetUserByEmail`, `GetAllUsers`, `CreateProduct`,
+`UpdateProduct`, `DeleteProduct`, `GetProductByID`, `GetAllProducts`.
+
+### v2: заказы и позиции заказа
+
+Добавлен интерфейс `Orders` и таблицы `orders` и `order_items`.
+
+- **Заказы:** создание заказа, получение по ID, список заказов
+  пользователя по email.
+- **Позиции:** добавление позиции к заказу, получение позиций заказа.
+
+Хендлеры: `CreateOrder`, `AddOrderItem`, `GetOrderByID`,
+`GetOrdersByUserEmail`. Ручка `GET /orders/{id}` вызывает два метода
+хранилища (`GetOrderByID` и `GetOrderItemsByOrderID`) и отдаёт заказ
+вместе с позициями.
+
+### v3: оформление заказа в транзакции
+
+Добавлен метод `PlaceOrder`. В одной транзакции он:
+
+1. уменьшает `stock` товаров (`UPDATE ... WHERE stock >= $1`),
+2. создаёт заказ,
+3. добавляет позиции заказа,
+4. создаёт запись в `transactions`.
+
+При любой ошибке выполняется откат, частичных записей не остаётся.
+Нехватка товара возвращает ошибку `ErrInsufficientStock`,
+несуществующий товар возвращает `ErrNotFound`.
+
+Хендлер: `PlaceOrder` (`POST /checkout`).
+
+### v4: история и аналитика
+
+Добавлены два метода хранилища:
+
+- `GetUserOrderHistory`: заказы пользователя с позициями и статусом
+  транзакции (`JOIN` и `LEFT JOIN`), результат собирается в структуру
+  `OrderDetail`.
+- `GetPopularProducts`: топ товаров по сумме продаж (`JOIN`,
+  `GROUP BY`, `SUM`), структура `PopularProduct`.
+
+Хендлеры: `GetUserOrderHistory` (`GET /users/history?email=...`),
+`GetPopularProducts` (`GET /products/popular`).
+
+## Тесты
+
+Юнит-тесты хендлеров написаны на моках хранилища (mockery + testify).
 
 ```bash
 go test ./...
 ```
 
-С подробным выводом:
+Если интерфейс хранилища изменился, моки нужно сгенерировать заново:
 
 ```bash
-go test -v ./...
-```
-
----
-
-## 🛠 Как запустить проект
-
-1. Клонировать репозиторий:
-
-   ```bash
-   git clone https://github.com/Che-Misty/go-pet-shop.git
-   cd go-pet-shop
-   ```
-
-2. Создать `.env` по примеру `.env.example`, указать строку подключения к БД:
-
-   ```
-   DATABASE_URL=postgres://user:password@localhost:5432/petshop?sslmode=disable
-   ```
-
-3. Запуск в Docker (рекомендуется):
-
-   ```bash
-   docker-compose up -d
-   ```
-
-4. Запуск локально (нужен установленный PostgreSQL):
-
-   ```bash
-   task migrate
-   go run cmd/app/main.go
-   ```
-
-5. API будет доступно по адресу `http://localhost:8080`
-
----
-
-## 🔍 Линтер
-
-```bash
-task linter
-```
-
-Проверки: `unused`, `bodyclose`, `govet`, `staticcheck`, `errcheck`, `ineffassign`, `gocyclo`.
-
----
-
-## 📂 Структура проекта
-
-```
-go-pet-shop/
-├── cmd/                        # Точки входа (app — сервер, migrator — миграции)
-├── config/                     # Конфигурация (yaml/json)
-├── internal/
-│   ├── config/                 # Загрузка и валидация конфигурации
-│   ├── handlers/
-│   │   └── product/            # HTTP-хендлеры, мок и тесты для товаров
-│   └── storage/                # Работа с БД
-├── migrations/                 # SQL-файлы миграций
-├── models/                     # Доменные модели и DTO
-├── .env                        # Переменные окружения (не хранится в git)
-├── .mockery.yml                # Конфигурация mockery (только в v2)
-├── .golangci.yaml               # Настройки линтера
-├── Taskfile.yaml                # Скрипты для работы с проектом
-├── go.mod                       # Модуль Go
-└── README.md                    # Документация
+go run github.com/vektra/mockery/v3
 ```
