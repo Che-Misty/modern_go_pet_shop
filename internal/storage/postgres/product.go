@@ -119,6 +119,11 @@ func (s *Storage) GetPopularProducts(ctx context.Context) ([]models.PopularProdu
 		`SELECT p.id, p.name, SUM(oi.quantity) AS total_sold
 		FROM order_items oi
 		JOIN products p ON p.id = oi.product_id
+		WHERE EXISTS (
+			SELECT 1
+			FROM transactions t
+			WHERE t.order_id = oi.order_id AND t.status = 'completed'
+		)
 		GROUP BY p.id, p.name
 		ORDER BY total_sold DESC
 		LIMIT 5`)
